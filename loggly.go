@@ -41,11 +41,16 @@ func New(token string) *Loggly {
 	return &logger
 }
 
-// log given object
+// log given object asynchronously
 func (l *Loggly) Log(obj interface{}) {
 	go func() {
 		l.channel <- obj
 	}()
+}
+
+// log given object synchronously
+func (l *Loggly) LogSync(obj interface{}) {
+	l.send(obj)
 }
 
 func (l *Loggly) send(obj interface{}) {
