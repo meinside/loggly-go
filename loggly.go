@@ -9,24 +9,26 @@ import (
 	"sync"
 )
 
+// Constants
 const (
-	EndpointUrlFormat  = "http://logs-01.loggly.com/bulk/%s/tag/bulk/"
+	EndpointURLFormat  = "http://logs-01.loggly.com/bulk/%s/tag/bulk/"
 	RequestContentType = "text/plain"
 	NumQueue           = 32
 )
 
+// Loggly struct
 type Loggly struct {
-	EndpointUrl string
+	EndpointURL string
 	client      *http.Client
 	channel     chan interface{}
 
 	sync.Mutex
 }
 
-// get a new logger
+// New gets a new logger
 func New(token string) *Loggly {
 	logger := Loggly{
-		EndpointUrl: fmt.Sprintf(EndpointUrlFormat, token),
+		EndpointURL: fmt.Sprintf(EndpointURLFormat, token),
 		client:      &http.Client{},
 		channel:     make(chan interface{}, NumQueue),
 	}
@@ -41,27 +43,27 @@ func New(token string) *Loggly {
 	return &logger
 }
 
-// log given object asynchronously
+// Log logs given object asynchronously
 func (l *Loggly) Log(obj interface{}) {
 	go func() {
 		l.channel <- obj
 	}()
 }
 
-// log given object synchronously
+// LogSync logs given object synchronously
 func (l *Loggly) LogSync(obj interface{}) {
 	l.send(obj)
 }
 
 func (l *Loggly) send(obj interface{}) {
-	var err error = nil
+	var err error
 
 	var data []byte
 	if data, err = json.Marshal(obj); err == nil {
 		l.Lock()
 
 		var req *http.Request
-		if req, err = http.NewRequest("POST", l.EndpointUrl, bytes.NewBuffer(data)); err == nil {
+		if req, err = http.NewRequest("POST", l.EndpointURL, bytes.NewBuffer(data)); err == nil {
 			req.Header.Set("Content-Type", RequestContentType)
 
 			var resp *http.Response
