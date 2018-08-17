@@ -11,16 +11,17 @@ import (
 
 // Constants
 const (
-	EndpointURLFormat  = "http://logs-01.loggly.com/bulk/%s/tag/bulk/"
+	EndpointURLFormat  = "https://logs-01.loggly.com/bulk/%s/tag/bulk/"
 	RequestContentType = "text/plain"
 	NumQueue           = 32
 )
 
 // Loggly struct
 type Loggly struct {
-	EndpointURL string
+	endpointURL string
 	client      *http.Client
 	channel     chan interface{}
+	stop        chan struct{}
 
 	sync.Mutex
 }
@@ -28,16 +29,26 @@ type Loggly struct {
 // New gets a new logger
 func New(token string) *Loggly {
 	logger := Loggly{
-		EndpointURL: fmt.Sprintf(EndpointURLFormat, token),
+		endpointURL: fmt.Sprintf(EndpointURLFormat, token),
 		client:      &http.Client{},
 		channel:     make(chan interface{}, NumQueue),
+		stop:        make(chan struct{}),
 	}
 
 	// monitor incoming objects
 	go func() {
-		for o := range logger.channel {
-			logger.send(o)
+		log.Println("Starting logger...")
+
+		for {
+			select {
+			case o := <-logger.channel:
+				logger.send(o)
+			case <-logger.stop:
+				break
+			}
 		}
+
+		log.Println("Stopping logger...")
 	}()
 
 	return &logger
@@ -55,6 +66,11 @@ func (l *Loggly) LogSync(obj interface{}) {
 	l.send(obj)
 }
 
+// Stop stops logger
+func (l *Loggly) Stop() {
+	l.stop <- struct{}{}
+}
+
 func (l *Loggly) send(obj interface{}) {
 	var err error
 
@@ -63,7 +79,7 @@ func (l *Loggly) send(obj interface{}) {
 		l.Lock()
 
 		var req *http.Request
-		if req, err = http.NewRequest("POST", l.EndpointURL, bytes.NewBuffer(data)); err == nil {
+		if req, err = http.NewRequest("POST", l.endpointURL, bytes.NewBuffer(data)); err == nil {
 			req.Header.Set("Content-Type", RequestContentType)
 
 			var resp *http.Response
