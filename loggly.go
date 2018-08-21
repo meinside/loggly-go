@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 )
 
 // Constants
@@ -14,6 +15,7 @@ const (
 	EndpointURLFormat  = "https://logs-01.loggly.com/bulk/%s/tag/bulk/"
 	RequestContentType = "text/plain"
 	NumQueue           = 32
+	TimeoutSeconds     = 5
 )
 
 // Loggly struct
@@ -30,9 +32,11 @@ type Loggly struct {
 func New(token string) *Loggly {
 	logger := Loggly{
 		endpointURL: fmt.Sprintf(EndpointURLFormat, token),
-		client:      &http.Client{},
-		channel:     make(chan interface{}, NumQueue),
-		stop:        make(chan struct{}),
+		client: &http.Client{
+			Timeout: TimeoutSeconds * time.Second,
+		},
+		channel: make(chan interface{}, NumQueue),
+		stop:    make(chan struct{}),
 	}
 
 	// monitor incoming objects
