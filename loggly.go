@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -15,7 +16,6 @@ const (
 	EndpointURLFormat  = "https://logs-01.loggly.com/bulk/%s/tag/bulk/"
 	RequestContentType = "text/plain"
 	NumQueue           = 32
-	TimeoutSeconds     = 5
 )
 
 // Loggly struct
@@ -33,7 +33,15 @@ func New(token string) *Loggly {
 	logger := Loggly{
 		endpointURL: fmt.Sprintf(EndpointURLFormat, token),
 		client: &http.Client{
-			Timeout: TimeoutSeconds * time.Second,
+			Transport: &http.Transport{
+				Dial: (&net.Dialer{
+					Timeout:   10 * time.Second,
+					KeepAlive: 10 * time.Second,
+				}).Dial,
+				TLSHandshakeTimeout:   5 * time.Second,
+				ResponseHeaderTimeout: 5 * time.Second,
+				ExpectContinueTimeout: 1 * time.Second,
+			},
 		},
 		channel: make(chan interface{}, NumQueue),
 		stop:    make(chan struct{}),
