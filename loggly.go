@@ -96,7 +96,13 @@ func (l *Loggly) send(obj interface{}) {
 			req.Header.Set("Content-Type", RequestContentType)
 
 			var resp *http.Response
-			if resp, err = l.client.Do(req); err == nil {
+			resp, err = l.client.Do(req)
+
+			if resp != nil {
+				defer resp.Body.Close()
+			}
+
+			if err == nil {
 				if resp.StatusCode != 200 {
 					log.Printf("Loggly: Returned HTTP status %d", resp.StatusCode)
 				}
