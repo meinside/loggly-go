@@ -89,7 +89,7 @@ func (l *Loggly) Stop() {
 
 // Timestamp generates key and value for current timestamp (in ISO-8601)
 func (l *Loggly) Timestamp() (key, value string) {
-	return keyTimestamp, time.Now().UTC().Format(time.RFC3339)
+	return keyTimestamp, time.Now().UTC().Format(time.RFC3339Nano)
 }
 
 func (l *Loggly) send(obj interface{}) {
