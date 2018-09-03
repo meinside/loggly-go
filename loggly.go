@@ -13,9 +13,12 @@ import (
 
 // Constants
 const (
-	EndpointURLFormat  = "https://logs-01.loggly.com/bulk/%s/tag/bulk/"
-	RequestContentType = "text/plain"
-	NumQueue           = 32
+	numQueue = 32
+
+	bulkEndpointURLFormat  = "https://logs-01.loggly.com/bulk/%s/tag/bulk/"
+	bulkRequestContentType = "text/plain"
+
+	keyTimestamp = "timestamp"
 )
 
 // Loggly struct
@@ -31,7 +34,7 @@ type Loggly struct {
 // New gets a new logger
 func New(token string) *Loggly {
 	logger := Loggly{
-		endpointURL: fmt.Sprintf(EndpointURLFormat, token),
+		endpointURL: fmt.Sprintf(bulkEndpointURLFormat, token),
 		client: &http.Client{
 			Transport: &http.Transport{
 				Dial: (&net.Dialer{
@@ -44,7 +47,7 @@ func New(token string) *Loggly {
 				ExpectContinueTimeout: 1 * time.Second,
 			},
 		},
-		channel: make(chan interface{}, NumQueue),
+		channel: make(chan interface{}, numQueue),
 		stop:    make(chan struct{}),
 	}
 
@@ -84,6 +87,11 @@ func (l *Loggly) Stop() {
 	l.stop <- struct{}{}
 }
 
+// Timestamp generates key and value for current timestamp (in ISO-8601)
+func (l *Loggly) Timestamp() (key, value string) {
+	return keyTimestamp, time.Now().UTC().Format(time.RFC3339)
+}
+
 func (l *Loggly) send(obj interface{}) {
 	var err error
 
@@ -93,7 +101,7 @@ func (l *Loggly) send(obj interface{}) {
 
 		var req *http.Request
 		if req, err = http.NewRequest("POST", l.endpointURL, bytes.NewBuffer(data)); err == nil {
-			req.Header.Set("Content-Type", RequestContentType)
+			req.Header.Set("Content-Type", bulkRequestContentType)
 
 			var resp *http.Response
 			resp, err = l.client.Do(req)
