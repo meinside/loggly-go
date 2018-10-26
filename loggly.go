@@ -78,8 +78,8 @@ func (l *Loggly) Log(obj interface{}) {
 }
 
 // LogSync logs given object synchronously
-func (l *Loggly) LogSync(obj interface{}) {
-	l.send(obj)
+func (l *Loggly) LogSync(obj interface{}) error {
+	return l.send(obj)
 }
 
 // Stop stops logger
@@ -92,9 +92,7 @@ func (l *Loggly) Timestamp() (key, value string) {
 	return keyTimestamp, time.Now().UTC().Format(time.RFC3339Nano)
 }
 
-func (l *Loggly) send(obj interface{}) {
-	var err error
-
+func (l *Loggly) send(obj interface{}) (err error) {
 	var data []byte
 	if data, err = json.Marshal(obj); err == nil {
 		l.Lock()
@@ -123,4 +121,6 @@ func (l *Loggly) send(obj interface{}) {
 	if err != nil {
 		log.Printf("Loggly Error: %s", err)
 	}
+
+	return err
 }
