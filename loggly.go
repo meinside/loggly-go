@@ -89,13 +89,6 @@ func (l *Loggly) Stop() {
 	l.stop <- struct{}{}
 }
 
-// Timestamp generates key and value for current time's timestamp (in ISO-8601)
-//
-// https://www.loggly.com/docs/automated-parsing/#json
-func (l *Loggly) Timestamp() (key, value string) {
-	return keyTimestamp, time.Now().UTC().Format(JSONTimestampFormat)
-}
-
 func (l *Loggly) send(obj interface{}) (err error) {
 	var data []byte
 	if data, err = json.Marshal(obj); err == nil {
@@ -127,4 +120,11 @@ func (l *Loggly) send(obj interface{}) (err error) {
 	}
 
 	return err
+}
+
+// Timestamp generates key and value for current time's timestamp (in ISO-8601)
+//
+// https://www.loggly.com/docs/automated-parsing/#json
+func Timestamp() (key, value string) {
+	return keyTimestamp, time.Now().UTC().Format(JSONTimestampFormat)
 }
