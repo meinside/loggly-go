@@ -19,6 +19,8 @@ const (
 	bulkRequestContentType = "text/plain"
 
 	keyTimestamp = "timestamp"
+
+	JSONTimestampFormat = "2006-01-02T15:04:05.999Z"
 )
 
 // Loggly struct
@@ -87,9 +89,11 @@ func (l *Loggly) Stop() {
 	l.stop <- struct{}{}
 }
 
-// Timestamp generates key and value for current timestamp (in ISO-8601)
+// Timestamp generates key and value for current time's timestamp (in ISO-8601)
+//
+// https://www.loggly.com/docs/automated-parsing/#json
 func (l *Loggly) Timestamp() (key, value string) {
-	return keyTimestamp, time.Now().UTC().Format(time.RFC3339Nano)
+	return keyTimestamp, time.Now().UTC().Format(JSONTimestampFormat)
 }
 
 func (l *Loggly) send(obj interface{}) (err error) {
