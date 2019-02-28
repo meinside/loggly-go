@@ -17,6 +17,7 @@ import (
 const (
 	numQueue          = 32
 	retryDelaySeconds = 3
+	retryCountLimit   = 3
 
 	bulkEndpointURLFormat  = "https://logs-01.loggly.com/bulk/%s/tag/bulk/"
 	bulkRequestContentType = "text/plain"
@@ -33,10 +34,15 @@ type Loggly struct {
 	client *http.Client
 
 	// for async sender loop
-	request chan interface{}
-	failed  chan interface{}
+	request chan logRequest
+	failed  chan logRequest
 	stop    chan struct{}
 	running bool
+}
+
+type logRequest struct {
+	retried int
+	data    interface{}
 }
 
 // New gets a new logger
@@ -55,8 +61,8 @@ func New(token string) *Loggly {
 				ExpectContinueTimeout: 1 * time.Second,
 			},
 		},
-		request: make(chan interface{}, numQueue),
-		failed:  make(chan interface{}, numQueue),
+		request: make(chan logRequest, numQueue),
+		failed:  make(chan logRequest, numQueue),
 		stop:    make(chan struct{}),
 	}
 
@@ -70,14 +76,23 @@ func New(token string) *Loggly {
 		for {
 			select {
 			case o := <-logger.request:
-				go logger.send(o)
+				go func(request logRequest) {
+					if err := logger.send(request.data); err != nil {
+						// retry on error
+						logger.failed <- logRequest{retried: 0, data: request.data}
+					}
+				}(o)
 			case f := <-logger.failed:
-				go func(obj interface{}) {
-					time.Sleep(retryDelaySeconds * time.Second)
+				go func(request logRequest) {
+					if request.retried >= retryCountLimit {
+						log.Printf("loggly logger dropping request with too many retries: %d", retryCountLimit)
+					} else {
+						time.Sleep(retryDelaySeconds * time.Second)
 
-					log.Printf("loggly logger resending failed request...")
+						log.Printf("loggly logger resending failed request...")
 
-					logger.request <- obj
+						logger.request <- logRequest{retried: request.retried + 1, data: request.data}
+					}
 				}(f)
 			case <-logger.stop:
 				break loop
@@ -95,7 +110,7 @@ func New(token string) *Loggly {
 // Log logs given object asynchronously
 func (l *Loggly) Log(obj interface{}) {
 	if l.running {
-		l.request <- obj
+		l.request <- logRequest{retried: 0, data: obj}
 	} else {
 		log.Printf("loggly logger async sender loop is not running")
 	}
