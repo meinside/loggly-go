@@ -1,19 +1,22 @@
 package loggly
 
+// Loggly logger library which sends logs synchronously or asynchronously
+
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
-	"sync"
 	"time"
 )
 
 // Constants
 const (
-	numQueue = 32
+	numQueue          = 32
+	retryDelaySeconds = 3
 
 	bulkEndpointURLFormat  = "https://logs-01.loggly.com/bulk/%s/tag/bulk/"
 	bulkRequestContentType = "text/plain"
@@ -26,11 +29,14 @@ const (
 // Loggly struct
 type Loggly struct {
 	endpointURL string
-	client      *http.Client
-	channel     chan interface{}
-	stop        chan struct{}
 
-	sync.Mutex
+	client *http.Client
+
+	// for async sender loop
+	request chan interface{}
+	failed  chan interface{}
+	stop    chan struct{}
+	running bool
 }
 
 // New gets a new logger
@@ -49,24 +55,38 @@ func New(token string) *Loggly {
 				ExpectContinueTimeout: 1 * time.Second,
 			},
 		},
-		channel: make(chan interface{}, numQueue),
+		request: make(chan interface{}, numQueue),
+		failed:  make(chan interface{}, numQueue),
 		stop:    make(chan struct{}),
 	}
 
 	// monitor incoming objects
 	go func() {
-		log.Println("Starting logger...")
+		log.Printf("loggly logger starting async sender loop...")
 
+		logger.running = true
+
+	loop:
 		for {
 			select {
-			case o := <-logger.channel:
-				logger.send(o)
+			case o := <-logger.request:
+				go logger.send(o)
+			case f := <-logger.failed:
+				go func(obj interface{}) {
+					time.Sleep(retryDelaySeconds * time.Second)
+
+					log.Printf("loggly logger resending failed request...")
+
+					logger.request <- obj
+				}(f)
 			case <-logger.stop:
-				break
+				break loop
 			}
 		}
 
-		log.Println("Stopping logger...")
+		logger.running = false
+
+		log.Printf("loggly logger stopped async sender loop")
 	}()
 
 	return &logger
@@ -74,9 +94,11 @@ func New(token string) *Loggly {
 
 // Log logs given object asynchronously
 func (l *Loggly) Log(obj interface{}) {
-	go func() {
-		l.channel <- obj
-	}()
+	if l.running {
+		l.request <- obj
+	} else {
+		log.Printf("loggly logger async sender loop is not running")
+	}
 }
 
 // LogSync logs given object synchronously
@@ -84,16 +106,16 @@ func (l *Loggly) LogSync(obj interface{}) error {
 	return l.send(obj)
 }
 
-// Stop stops logger
+// Stop stops logger's async sender loop
 func (l *Loggly) Stop() {
+	log.Printf("loggly logger stopping async sender loop...")
+
 	l.stop <- struct{}{}
 }
 
 func (l *Loggly) send(obj interface{}) (err error) {
 	var data []byte
 	if data, err = json.Marshal(obj); err == nil {
-		l.Lock()
-
 		var req *http.Request
 		if req, err = http.NewRequest("POST", l.endpointURL, bytes.NewBuffer(data)); err == nil {
 			req.Header.Set("Content-Type", bulkRequestContentType)
@@ -107,16 +129,23 @@ func (l *Loggly) send(obj interface{}) (err error) {
 
 			if err == nil {
 				if resp.StatusCode != 200 {
-					log.Printf("Loggly: Returned HTTP status %d", resp.StatusCode)
+					var body []byte
+					if resp.Body != nil {
+						body, err = ioutil.ReadAll(resp.Body)
+					}
+
+					if body != nil {
+						log.Printf("loggly returned http status %d: %s", resp.StatusCode, string(body))
+					} else {
+						log.Printf("loggly returned http status %d", resp.StatusCode)
+					}
 				}
 			}
 		}
-
-		l.Unlock()
 	}
 
 	if err != nil {
-		log.Printf("Loggly Error: %s", err)
+		log.Printf("loggly error: %s", err)
 	}
 
 	return err
