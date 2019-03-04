@@ -23,6 +23,8 @@ import (
 func main() {
 	logger := loggly.New("XXXXXX-0000-YYYY-ZZZZ-0000000000000")
 
+	time.Sleep(1 * time.Second)	// wait for the logger getting ready
+
 	// can log any type of variable
 	logger.Log("Hello loggly.")	// a string,
 	for i := 0; i < 42; i++ {
