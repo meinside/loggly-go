@@ -16,7 +16,7 @@ import (
 // Constants
 const (
 	numQueue          = 32
-	retryDelaySeconds = 3
+	retryDelaySeconds = 1
 	retryCountLimit   = 3
 
 	bulkEndpointURLFormat  = "https://logs-01.loggly.com/bulk/%s/tag/bulk/"
@@ -79,20 +79,20 @@ func New(token string) *Loggly {
 				go func(request logRequest) {
 					if err := logger.send(request.data); err != nil {
 						// retry on error
-						logger.failed <- logRequest{retried: 0, data: request.data}
+						if request.retried >= retryCountLimit {
+							log.Printf("loggly logger dropping request with too many retries: %d", retryCountLimit)
+						} else {
+							logger.failed <- logRequest{retried: request.retried, data: request.data}
+						}
 					}
 				}(o)
 			case f := <-logger.failed:
 				go func(request logRequest) {
-					if request.retried >= retryCountLimit {
-						log.Printf("loggly logger dropping request with too many retries: %d", retryCountLimit)
-					} else {
-						time.Sleep(retryDelaySeconds * time.Second)
+					time.Sleep(retryDelaySeconds * time.Second)
 
-						log.Printf("loggly logger resending failed request...")
+					log.Printf("loggly logger resending failed request...")
 
-						logger.request <- logRequest{retried: request.retried + 1, data: request.data}
-					}
+					logger.request <- logRequest{retried: request.retried + 1, data: request.data}
 				}(f)
 			case <-logger.stop:
 				break loop
@@ -150,9 +150,13 @@ func (l *Loggly) send(obj interface{}) (err error) {
 					}
 
 					if body != nil {
-						log.Printf("loggly returned http status %d: %s", resp.StatusCode, string(body))
+						err = fmt.Errorf("loggly returned http status %d: %s", resp.StatusCode, string(body))
+
+						log.Printf(err.Error())
 					} else {
-						log.Printf("loggly returned http status %d", resp.StatusCode)
+						err = fmt.Errorf("loggly returned http status %d", resp.StatusCode)
+
+						log.Printf(err.Error())
 					}
 				}
 			}
